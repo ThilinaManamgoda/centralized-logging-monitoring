@@ -104,3 +104,26 @@ spec:
       name: pass-through-http
       protocol: TCP
       port: 5601
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: wso2-kibana-ingress
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "route"
+    nginx.ingress.kubernetes.io/session-cookie-hash: "sha1"
+spec:
+  tls:
+  - hosts:
+    - wso2-kibana
+  rules:
+  - host: wso2kibana
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: wso2-kibana-service
+          servicePort: 5601
