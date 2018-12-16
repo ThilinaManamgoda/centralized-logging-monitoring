@@ -29,6 +29,10 @@ spec:
       labels:
         deployment: wso2apim-with-analytics-apim
     spec:
+      initContainers:
+      - name: init-wso2-elasticsearch-service
+        image: busybox
+        command: ['sh', '-c', 'until nc -z wso2-elasticsearch-service 9200; do echo waiting for wso2-elasticsearch-service; sleep 2; done;']
       containers:
       - name: wso2apim-with-analytics-apim-worker
         image: docker.wso2.com/wso2am:2.6.0
@@ -84,9 +88,23 @@ spec:
           mountPath: /home/wso2carbon/wso2-config-volume/repository/conf
         - name: apim-conf-datasources
           mountPath: /home/wso2carbon/wso2-config-volume/repository/conf/datasources
+        - name: shared-logs
+          mountPath: /home/wso2carbon/wso2am-2.6.0/repository/logs/
+        imagePullSecrets:
+              - name: wso2creds
+      - name: logstash
+        image: maanadev/logstash:6.5.3-custom
+        volumeMounts:
+        - name: shared-logs
+          mountPath: /usr/share/logstash/mylogs/
+        env:
+        - name: NODE_ID
+          value: "wso2sp-manager-1"
+        - name: LOGSTASH_INDEX
+          valueFrom:
+            fieldRef:
+             fieldPath: status.podIP
       serviceAccountName: "wso2svc-account"
-      imagePullSecrets:
-      - name: wso2creds
       volumes:
       - name: apim-storage-volume
         persistentVolumeClaim:
@@ -97,3 +115,5 @@ spec:
       - name: apim-conf-datasources
         configMap:
           name: apim-conf-datasources
+      - name: shared-logs
+          emptyDir: {}
