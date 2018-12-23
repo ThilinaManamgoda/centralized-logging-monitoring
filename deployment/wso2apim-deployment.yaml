@@ -1,21 +1,7 @@
-# Copyright (c) 2017, WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
-  name: wso2apim-with-analytics-apim
+  name: wso2apim
 spec:
   replicas: 1
   minReadySeconds: 30
@@ -27,15 +13,15 @@ spec:
   template:
     metadata:
       labels:
-        deployment: wso2apim-with-analytics-apim
+        deployment: wso2apim
     spec:
       initContainers:
       - name: init-wso2-elasticsearch-service
         image: busybox
         command: ['sh', '-c', 'until nc -z wso2-elasticsearch-service 9200; do echo waiting for wso2-elasticsearch-service; sleep 2; done;']
       containers:
-      - name: wso2apim-with-analytics-apim-worker
-        image: docker.wso2.com/wso2am:2.6.0
+      - name: wso2apim
+        image: wso2/wso2am:2.6.0
         livenessProbe:
           exec:
             command:
@@ -82,38 +68,90 @@ spec:
           containerPort: 7611
           protocol: "TCP"
         volumeMounts:
-        - name: apim-storage-volume
-          mountPath: /home/wso2carbon/wso2am-2.6.0/repository/deployment/server
-        - name: apim-conf
-          mountPath: /home/wso2carbon/wso2-config-volume/repository/conf
-        - name: apim-conf-datasources
-          mountPath: /home/wso2carbon/wso2-config-volume/repository/conf/datasources
         - name: shared-logs
           mountPath: /home/wso2carbon/wso2am-2.6.0/repository/logs/
-        imagePullSecrets:
-              - name: wso2creds
       - name: logstash
         image: maanadev/logstash:6.5.3-custom
         volumeMounts:
         - name: shared-logs
           mountPath: /usr/share/logstash/mylogs/
+        - name: logstash-yml
+          mountPath: /usr/share/logstash/config/logstash.yml
+          subPath: logstash.yml
+        - name: logstash-conf
+          mountPath: /usr/share/logstash/pipeline/logstash.conf
+          subPath: logstash.conf
         env:
         - name: NODE_ID
-          value: "wso2sp-manager-1"
-        - name: LOGSTASH_INDEX
+          value: "wso2-apim"
+        - name: NODE_IP
           valueFrom:
             fieldRef:
              fieldPath: status.podIP
-      serviceAccountName: "wso2svc-account"
       volumes:
-      - name: apim-storage-volume
-        persistentVolumeClaim:
-          claimName: wso2apim-with-analytics-apim-deployment-volume-claim
-      - name: apim-conf
-        configMap:
-          name: apim-conf
-      - name: apim-conf-datasources
-        configMap:
-          name: apim-conf-datasources
       - name: shared-logs
-          emptyDir: {}
+        emptyDir: {}
+      - name: logstash-yml
+        configMap:
+          name: logstash-yml
+      - name: logstash-conf
+        configMap:
+          name: logstash-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wso2apim-service
+spec:
+  # label keys and values that must match in order to receive traffic for this service
+  selector:
+    deployment: wso2apim
+  ports:
+    # ports that this service should serve on
+    -
+      name: pass-through-http
+      protocol: TCP
+      port: 8280
+    -
+      name: pass-through-https
+      protocol: TCP
+      port: 8243
+    -
+      name: servlet-http
+      protocol: TCP
+      port: 9763
+    -
+      name: servlet-https
+      protocol: TCP
+      port: 9443
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: wso2apim-ingress
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "route"
+    nginx.ingress.kubernetes.io/session-cookie-hash: "sha1"
+spec:
+  tls:
+  - hosts:
+    - wso2apim
+    - wso2apim-gateway
+  rules:
+  - host: wso2apim
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: wso2apim-service
+          servicePort: 9443
+  - host: wso2apim-gateway
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: wso2apim-service
+          servicePort: 8243

@@ -10,33 +10,56 @@ spec:
       labels:
         deployment: wso2-elastic-search
     spec:
+      initContainers:
+      - name: init-sysctl
+        image: busybox:1.27.2
+        command:
+        - sysctl
+        - -w
+        - vm.max_map_count=262144
+        securityContext:
+          privileged: true
       containers:
       - name: wso2-elastic-search
         image: docker.elastic.co/elasticsearch/elasticsearch:6.5.3
         livenessProbe:
-          exec:
-            command:
-            - /bin/bash
-            - -c
-            - nc -z localhost 9200
-          initialDelaySeconds: 20
+          tcpSocket:
+            port: 9200
+          initialDelaySeconds: 30
           periodSeconds: 5
         readinessProbe:
-          exec:
-            command:
-              - /bin/bash
-              - -c
-              - nc -z localhost 9200
+          httpGet:
+            path: /_cluster/health
+            port: http
           initialDelaySeconds: 20
           periodSeconds: 5
         imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: 0.25
+          limits:
+            cpu: 1
         ports:
         -
           containerPort: 9200
           protocol: "TCP"
+          name: http
         -
           containerPort: 9300
           protocol: "TCP"
+        env:
+        - name: discovery.type
+          value: "single-node"
+        - name: ES_JAVA_OPTS
+          value: -Xms256m -Xmx256m
+        - name: network.host
+          valueFrom:
+            fieldRef:
+             fieldPath: status.podIP
+        - name: PROCESSORS
+          valueFrom:
+            resourceFieldRef:
+              resource: limits.cpu
 ---
 apiVersion: v1
 kind: Service
@@ -47,11 +70,11 @@ spec:
     deployment: wso2-elastic-search
   ports:
     -
-      name: pass-through-http
+      name: http-1
       protocol: TCP
       port: 9200
     -
-      name: pass-through-http
+      name: http-2
       protocol: TCP
       port: 9300
 ---
@@ -67,23 +90,22 @@ spec:
       labels:
         deployment: wso2-kibana
     spec:
+      initContainers:
+      - name: init-wso2-elasticsearch-service
+        image: busybox
+        command: ['sh', '-c', 'until nslookup wso2-elasticsearch-service; do echo waiting for wso2-elasticsearch-service; sleep 2; done;']
       containers:
       - name: wso2-kibana
         image: docker.elastic.co/kibana/kibana:6.5.3
         livenessProbe:
-          exec:
-            command:
-            - /bin/bash
-            - -c
-            - nc -z localhost 5601
+          tcpSocket:
+            port: 5601
           initialDelaySeconds: 20
           periodSeconds: 5
         readinessProbe:
-          exec:
-            command:
-              - /bin/bash
-              - -c
-              - nc -z localhost 5601
+          httpGet:
+            path: /api/status
+            port: http
           initialDelaySeconds: 10
           periodSeconds: 5
         imagePullPolicy: Always
@@ -91,6 +113,20 @@ spec:
         -
           containerPort: 5601
           protocol: "TCP"
+          name: http
+        volumeMounts:
+        - name: kibana-yml
+          mountPath: /usr/share/kibana/config/kibana.yml
+          subPath: kibana.yml
+        env:
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+             fieldPath: status.podIP
+      volumes:
+      - name: kibana-yml
+        configMap:
+          name: kibana-yml
 ---
 apiVersion: v1
 kind: Service
@@ -101,7 +137,7 @@ spec:
     deployment: wso2-kibana
   ports:
     -
-      name: pass-through-http
+      name: http
       protocol: TCP
       port: 5601
 ---
@@ -111,16 +147,9 @@ metadata:
   name: wso2-kibana-ingress
   annotations:
     kubernetes.io/ingress.class: "nginx"
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    nginx.ingress.kubernetes.io/affinity: "cookie"
-    nginx.ingress.kubernetes.io/session-cookie-name: "route"
-    nginx.ingress.kubernetes.io/session-cookie-hash: "sha1"
 spec:
-  tls:
-  - hosts:
-    - wso2-kibana
   rules:
-  - host: wso2kibana
+  - host: wso2-kibana
     http:
       paths:
       - path: /
