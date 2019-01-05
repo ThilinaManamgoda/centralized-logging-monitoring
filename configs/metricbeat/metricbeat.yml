@@ -1,0 +1,37 @@
+metricbeat.modules:
+- module: jolokia
+  metricsets: ["jmx"]
+  enabled: true
+  period: 10s
+  hosts: ["localhost:9763"]
+  namespace: "jolokia_metrics"
+  path: "/jolokia"
+  http_method: 'GET'
+  jmx.mappings:
+    - mbean: 'java.lang:type=Memory'
+      attributes:
+       - attr: HeapMemoryUsage
+         field: memory.heap_usage
+       - attr: NonHeapMemoryUsage
+         field: memory.non_heap_usage
+    - mbean: 'Catalina:name=*,type=ThreadPool'
+      attributes:
+       - attr: port
+         field: catalina.port
+       - attr: maxConnections
+         field: catalina.maxConnections
+    - mbean: 'java.lang:type=Runtime'
+      attributes:
+       - attr: Uptime
+         field: uptime
+
+output.elasticsearch:
+  hosts: 'wso2-elasticsearch-service'
+  username: 'elastic'
+  password: 'changeme'
+output.elasticsearch.index: "${NODE_ID}-${NODE_IP}-metricbeat-%{+yyyy.MM.dd}"
+
+setup.dashboards.index: "${NODE_ID}-${NODE_IP}-metricbeat-*"
+setup.dashboards.enabled: true
+setup.kibana:
+  host: "wso2-kibana-service:5601"

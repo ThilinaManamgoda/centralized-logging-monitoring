@@ -19,6 +19,15 @@ spec:
       - name: init-wso2-elasticsearch-service
         image: busybox
         command: ['sh', '-c', 'until nc -z wso2-elasticsearch-service 9200; do echo waiting for wso2-elasticsearch-service; sleep 2; done;']
+      - name: init-wso2-kibana-service
+        image: busybox
+        command: ['sh', '-c', 'until nc -z wso2-kibana-servicee 5601; do echo waiting for wso2-kibana-service; sleep 2; done;']
+      - name: install-jolokia-jar
+        image: busybox
+        command: ['sh', '-c', 'wget -O /dropins/jolokia-osgi-1.6.0.jar http://search.maven.org/remotecontent?filepath=org/jolokia/jolokia-osgi/1.6.0/jolokia-osgi-1.6.0.jar']
+        volumeMounts:
+        - name: dropins
+          mountPath: "/dropins"
       containers:
       - name: wso2apim
         image: wso2/wso2am:2.6.0
@@ -70,6 +79,8 @@ spec:
         volumeMounts:
         - name: shared-logs
           mountPath: /home/wso2carbon/wso2am-2.6.0/repository/logs/
+        - name: dropins
+          mountPath: "/home/wso2carbon/wso2-artifact-volume/repository/components/dropins/"
       - name: logstash
         image: maanadev/logstash:6.5.3-custom
         volumeMounts:
@@ -88,6 +99,19 @@ spec:
           valueFrom:
             fieldRef:
              fieldPath: status.podIP
+      - name: metricbeat
+        image: docker.elastic.co/beats/metricbeat:6.5.3
+        volumeMounts:
+        - name: metricbeat-yml
+          mountPath: /usr/share/metricbeat/metricbeat.yml
+          subPath: metricbeat.yml
+        env:
+        - name: NODE_ID
+          value: "wso2-apim"
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+             fieldPath: status.podIP
       volumes:
       - name: shared-logs
         emptyDir: {}
@@ -97,6 +121,11 @@ spec:
       - name: logstash-conf
         configMap:
           name: logstash-conf
+      - name: metricbeat-yml
+        configMap:
+          name: metricbeat-yml
+      - name: dropins
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
