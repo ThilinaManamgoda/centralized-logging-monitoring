@@ -21,7 +21,7 @@ spec:
         command: ['sh', '-c', 'until nc -z wso2-elasticsearch-service 9200; do echo waiting for wso2-elasticsearch-service; sleep 2; done;']
       - name: init-wso2-kibana-service
         image: busybox
-        command: ['sh', '-c', 'until nc -z wso2-kibana-servicee 5601; do echo waiting for wso2-kibana-service; sleep 2; done;']
+        command: ['sh', '-c', 'until nc -z wso2-kibana-service 5601; do echo waiting for wso2-kibana-service; sleep 2; done;']
       - name: install-jolokia-jar
         image: busybox
         command: ['sh', '-c', 'wget -O /dropins/jolokia-osgi-1.6.0.jar http://search.maven.org/remotecontent?filepath=org/jolokia/jolokia-osgi/1.6.0/jolokia-osgi-1.6.0.jar']
@@ -100,7 +100,7 @@ spec:
             fieldRef:
              fieldPath: status.podIP
       - name: metricbeat
-        image: docker.elastic.co/beats/metricbeat:6.5.3
+        image: docker.elastic.co/beats/metricbeat:7.0.0-alpha2
         volumeMounts:
         - name: metricbeat-yml
           mountPath: /usr/share/metricbeat/metricbeat.yml
@@ -125,7 +125,7 @@ spec:
         configMap:
           name: metricbeat-yml
       - name: dropins
-          emptyDir: {}
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
